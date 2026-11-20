@@ -1,6 +1,3 @@
-// import.js - import i eksport JSON; main.js zostaje bez zmian (ładować PO nim).
-// Zwykły skrypt (nie moduł), ładowany PO main.js: widzi jego globalne `zgloszenia` i `odswiezWidok`.
-// Przyciski i pasek komunikatów są w main.html; ten plik się pod nie podpina.
 (function () {
   const STATUSY = ["Otwarte", "W toku", "Rozwiązane"];
   const PRIORYTETY = ["Niski", "Średni", "Wysoki", "Krytyczny"];
@@ -9,7 +6,6 @@
 
   let busy = false;
 
-  // ---------- walidacja: zwraca NOWĄ kolekcję albo rzuca Error ----------
   function walidujZgloszenia(raw) {
     if (!Array.isArray(raw)) throw Error("Dane muszą być tablicą zgłoszeń");
     if (raw.length > LIMIT) throw Error(`Za dużo zgłoszeń (max ${LIMIT})`);
@@ -19,7 +15,6 @@
       if (typeof r !== "object" || r === null || Array.isArray(r)) throw Error(`${nr}: to nie jest obiekt`);
       for (const pole of ["id", "temat", "klient", "status", "priorytet"]) {
         if (typeof r[pole] !== "string" || r[pole].trim() === "") throw Error(`${nr}: brak pola "${pole}"`);
-        // main.js wstawia dane przez innerHTML, więc nie wpuszczamy znaczników
         if (/[<>]/.test(r[pole])) throw Error(`${nr}: niedozwolone znaki < > w polu "${pole}"`);
       }
       if (!STATUSY.includes(r.status)) throw Error(`${nr}: zły status "${r.status}"`);
@@ -31,7 +26,6 @@
     return wynik;
   }
 
-  // ---------- adaptery odczytu ----------
   function parseJson(tekst) {
     try { return JSON.parse(tekst); }
     catch { throw Error("To nie jest poprawny JSON (np. HTML zamiast JSON)"); }
@@ -39,7 +33,7 @@
 
   async function wczytajZSerwera() {
     const response = await fetch(URL_JSON);
-    if (!response.ok) throw Error(`HTTP ${response.status}`); // 404 nie odrzuca fetch
+    if (!response.ok) throw Error(`HTTP ${response.status}`);
     return parseJson(await response.text());
   }
 
@@ -47,30 +41,27 @@
     return parseJson(await plik.text());
   }
 
-  // ---------- wspólne zatwierdzanie i błędy ----------
   async function importFrom(load, opis) {
-    if (busy) return;              // blokada kolejnych importów
-    ustawBusy(true);               // PRZED pierwszym await
+    if (busy) return;
+    ustawBusy(true);
     komunikat(`Importuję: ${opis}…`, "info");
     try {
       const raw = await load();
-      const nowe = walidujZgloszenia(raw);   // cała walidacja przed zmianą stanu
+      const nowe = walidujZgloszenia(raw);
       if (!confirm(`Zastąpić obecną listę (${zgloszenia.length}) importowaną (${nowe.length})?`)) {
         komunikat("Import anulowany – lista bez zmian.", "info");
         return;
       }
-      zgloszenia = nowe;           // podmiana dopiero po zgodzie
+      zgloszenia = nowe;
       odswiezWidok();
       komunikat(`Zaimportowano ${nowe.length} zgłoszeń.`, "ok");
     } catch (e) {
       komunikat(`Błąd importu: ${e.message}. Poprzednia lista zachowana.`, "blad");
     } finally {
-      ustawBusy(false);            // zwolnienie blokady także po błędzie
+      ustawBusy(false);
     }
   }
 
-  // ---------- eksport: zapis prosto do istniejącego pliku dane.json ----------
-  // Uchwyt pliku zapamiętujemy w IndexedDB, więc wskazujesz dane.json tylko raz (na tym adresie strony).
   function idb() {
     return new Promise((resolve, reject) => {
       const req = indexedDB.open("helpdesk-eksport", 1);
@@ -99,22 +90,20 @@
 
   async function uchwytDoZapisu() {
     let uchwyt = null;
-    try { uchwyt = await pobierzUchwyt(); } catch { /* brak IndexedDB – poprosimy o plik */ }
+    try { uchwyt = await pobierzUchwyt(); } catch { }
 
     if (uchwyt) {
-      // po odświeżeniu strony przeglądarka może zapytać o zgodę na zapis (jedno kliknięcie)
       let zgoda = await uchwyt.queryPermission({ mode: "readwrite" });
       if (zgoda !== "granted") zgoda = await uchwyt.requestPermission({ mode: "readwrite" });
       if (zgoda === "granted") return uchwyt;
     }
 
-    // pierwszy raz: wskaż ISTNIEJĄCY plik dane.json (nie tworzy nowego)
     [uchwyt] = await window.showOpenFilePicker({
       types: [{ description: "JSON", accept: { "application/json": [".json"] } }],
       multiple: false
     });
     if (await uchwyt.requestPermission({ mode: "readwrite" }) !== "granted") throw Error("Brak zgody na zapis do pliku");
-    try { await zapamietajUchwyt(uchwyt); } catch { /* nie krytyczne */ }
+    try { await zapamietajUchwyt(uchwyt); } catch { }
     return uchwyt;
   }
 
@@ -140,7 +129,7 @@
         finally { await strumien.close(); }
         komunikat(`Zapisano ${zgloszenia.length} zgłoszeń w pliku ${uchwyt.name}.`, "ok");
       } else {
-        pobierzJakoPlik(tekst); // Firefox i inne bez File System Access API
+        pobierzJakoPlik(tekst);
         komunikat(`Pobrano dane.json (${zgloszenia.length} zgłoszeń). Podmień nim plik w folderze projektu.`, "ok");
       }
     } catch (e) {
@@ -149,7 +138,6 @@
     }
   }
 
-  // ---------- UI (przyciski są w main.html) ----------
   const KOLORY = {
     info: "bg-slate-100 text-slate-700", ok: "bg-emerald-100 text-emerald-800",
     blad: "bg-red-100 text-red-800"
@@ -162,7 +150,6 @@
   }
 
   function zablokujEdycje() {
-    // wszystko w <main> oprócz eksportu (kopia danych jest bezpieczna w trakcie importu)
     document.querySelectorAll("main button, main select, main input").forEach(el => {
       if (el.id === "btn-eksport") return;
       el.disabled = busy;
@@ -185,21 +172,19 @@
       const plik = input.files[0];
       if (!plik) return;
       await importFrom(() => wczytajZPliku(plik), plik.name);
-      input.value = "";            // pozwala wybrać ten sam plik ponownie
+      input.value = "";
     });
   }
 
-  // ---------- owinięcie funkcji z main.js (inline onclick/onchange szukają ich w window) ----------
   function owinBlokadą(nazwa) {
     const oryginal = window[nazwa];
     window[nazwa] = function (...args) {
-      if (busy) return;            // edycja zablokowana w trakcie importu
+      if (busy) return;
       return oryginal.apply(this, args);
     };
   }
   ["zmienStatus", "usunZgloszenie", "dodajZgloszenie", "otworzFormularz"].forEach(owinBlokadą);
 
-  // odswiezWidok renderuje tabelę od nowa, więc po każdym renderze ponownie nakładamy blokadę
   const oryginalOdswiez = window.odswiezWidok;
   window.odswiezWidok = function (...args) {
     const wynik = oryginalOdswiez.apply(this, args);

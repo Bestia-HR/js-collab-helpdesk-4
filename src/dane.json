@@ -1,12 +1,5 @@
 [
   {
-    "id": "#TK-1094",
-    "temat": "sdfgh",
-    "klient": "zdxfghj",
-    "status": "Otwarte",
-    "priorytet": "Niski"
-  },
-  {
     "id": "#TK-1092",
     "temat": "Nie działa resetowanie hasła",
     "klient": "Jan Kowalski",
