@@ -1,3 +1,4 @@
+//finalna wersja wrzutka by Adam
 export const DOZWOLONE_STATUSY = ["Otwarte", "W toku", "Rozwiązane"];
 export const DOZWOLONE_PRIORYTETY = ["Niski", "Średni", "Wysoki", "Krytyczny"];
 export const MAX_ZGLOSZEN = 100;

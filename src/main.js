@@ -1,3 +1,4 @@
+//finalna wrzutka by Adam
 import { DOZWOLONE_STATUSY, validateTickets, utworzNoweZgloszenie } from "./domain.js";
 
 const STORAGE_KEY = "school_helpdesk_tickets";
