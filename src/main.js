@@ -1,111 +1,167 @@
-let zgloszenia = [
-        { id: "#TK-1092", temat: "Nie działa resetowanie hasła", klient: "Jan Kowalski", status: "W toku", priorytet: "Wysoki" },
-        { id: "#TK-1091", temat: "Błąd płatności kartą", klient: "Anna Nowak", status: "Rozwiązane", priorytet: "Średni" },
-        { id: "#TK-1090", temat: "Problem z logowaniem", klient: "Piotr Zieliński", status: "Otwarte", priorytet: "Krytyczny" }
-      ];
- 
-      function odswiezWidok() {
-        let tbody = document.getElementById("tabela-cialo");
-        tbody.innerHTML = ""; 
- 
-        let ileOtwarte = 0;
-        let ileWToku = 0;
-        let ileRozwiazane = 0;
- 
-        let filtr = document.getElementById("filtr-statusu").value;
+import { DOZWOLONE_STATUSY, utworzNoweZgloszenie } from "./domain.js";
+import { pokazKomunikat } from "./messages.js";
+import { wczytajZgloszeniaNaStart, zapiszZgloszenia } from "./storage.js";
+import { czyZablokowane } from "./lock.js";
+import { wyswietlZgloszenia } from "./render.js";
+import { importujZ, pobierzTekstZPliku } from "./importer.js";
+import { eksportujDoJson } from "./exporter.js";
 
-        for(let i=0;i<zgloszenia.length;i++){
-          let z=zgloszenia[i];
-          if(filtr!== "Wszystkie" && z.status !== filtr)
-        {
-          continue;
-        }
-        
- 
-          if (z.status === "Otwarte") ileOtwarte++;
-          if (z.status === "W toku") ileWToku++;
-          if (z.status === "Rozwiązane") ileRozwiazane++;
- 
-          let kolorStatusu = "bg-slate-100 text-slate-800";
-          if (z.status === "W toku") kolorStatusu = "bg-amber-100 text-amber-800";
-          if (z.status === "Rozwiązane") kolorStatusu = "bg-emerald-100 text-emerald-800";
- 
-          let kolorPriorytetu = "text-slate-600";
-          if (z.priorytet === "Średni") kolorPriorytetu = "text-amber-600 font-medium";
-          if (z.priorytet === "Wysoki") kolorPriorytetu = "text-orange-600 font-medium";
-          if (z.priorytet === "Krytyczny") kolorPriorytetu = "text-red-600 font-bold";
- 
-          let wiersz = `
-            <tr class="hover:bg-slate-50">
-              <td class="p-4 font-medium text-indigo-600">${z.id}</td>
-              <td class="p-4">${z.temat}</td>
-              <td class="p-4 text-slate-600">${z.klient}</td>
-              <td class="p-4">
-                <select onchange="zmienStatus(${i}, this.value)" class="${kolorStatusu} text-xs px-2.5 py-1 rounded-full font-medium">
-                  <option value="Otwarte" ${z.status === "Otwarte" ? "selected" : ""}>Otwarte</option>
-                  <option value="W toku" ${z.status === "W toku" ? "selected" : ""}>W toku</option>
-                  <option value="Rozwiązane" ${z.status === "Rozwiązane" ? "selected" : ""}>Rozwiązane</option>
-                </select>
-              </td>
-              <td class="p-4 ${kolorPriorytetu}">${z.priorytet}</td>
-              <td class="p-4"><button onclick="usunZgloszenie(${i})" class="bg-red-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium">Usuń</button></td>
-            </tr>
-          `;
-          tbody.innerHTML += wiersz;
-        }
- 
-        document.getElementById("licznik-otwarte").innerText = ileOtwarte;
-        document.getElementById("licznik-w-toku").innerText = ileWToku;
-        document.getElementById("licznik-rozwiazane").innerText = ileRozwiazane;
+let zgloszenia = [];
+
+function odswiezWidok() {
+  wyswietlZgloszenia(zgloszenia, { zmienStatus: zmienStatus, usun: usunZgloszenie });
+}
+
+function zastapListe(nowaLista) {
+  zgloszenia = nowaLista;
+  const zapisano = zapiszZgloszenia(zgloszenia);
+  odswiezWidok();
+  return zapisano;
+}
+
+function znajdzIndeksPoId(id) {
+  for (let i = 0; i < zgloszenia.length; i++) {
+    if (zgloszenia[i].id === id) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function zmienStatus(id, nowyStatus) {
+  if (czyZablokowane()) return;
+
+  let poprawnyStatus = false;
+  for (let s = 0; s < DOZWOLONE_STATUSY.length; s++) {
+    if (DOZWOLONE_STATUSY[s] === nowyStatus) {
+      poprawnyStatus = true;
+    }
+  }
+  if (!poprawnyStatus) {
+    pokazKomunikat("Nieznany status: " + nowyStatus, "blad");
+    odswiezWidok();
+    return;
+  }
+
+  const indeks = znajdzIndeksPoId(id);
+  if (indeks === -1) {
+    pokazKomunikat("Nie znaleziono zgłoszenia o ID: " + id, "blad");
+    return;
+  }
+
+  zgloszenia[indeks].status = nowyStatus;
+  zapiszZgloszenia(zgloszenia);
+  odswiezWidok();
+}
+
+function usunZgloszenie(id) {
+  if (czyZablokowane()) return;
+
+  const indeks = znajdzIndeksPoId(id);
+  if (indeks === -1) {
+    pokazKomunikat("Nie znaleziono zgłoszenia o ID: " + id, "blad");
+    return;
+  }
+
+  zgloszenia.splice(indeks, 1);
+  zapiszZgloszenia(zgloszenia);
+  odswiezWidok();
+}
+
+function otworzFormularz() {
+  if (czyZablokowane()) return;
+  document.getElementById("panel-dodawania").classList.remove("hidden");
+}
+
+function zamknijFormularz() {
+  document.getElementById("panel-dodawania").classList.add("hidden");
+}
+
+function dodajZgloszenie() {
+  if (czyZablokowane()) return;
+
+  const temat = document.getElementById("input-temat").value;
+  const klient = document.getElementById("input-klient").value;
+  const status = document.getElementById("input-status").value;
+  const priorytet = document.getElementById("input-priorytet").value;
+
+  try {
+    const nowe = utworzNoweZgloszenie(
+      zgloszenia,
+      temat,
+      klient,
+      status,
+      priorytet,
+    );
+    zgloszenia.unshift(nowe);
+    const zapisano = zapiszZgloszenia(zgloszenia);
+    odswiezWidok();
+
+    document.getElementById("input-temat").value = "";
+    document.getElementById("input-klient").value = "";
+    zamknijFormularz();
+
+    if (zapisano) {
+      pokazKomunikat("Dodano nowe zgłoszenie: " + nowe.id, "sukces");
+    }
+  } catch (blad) {
+    alert(blad.message);
+  }
+}
+
+function eksportujZgloszenia() {
+  if (czyZablokowane()) return;
+
+  if (zgloszenia.length === 0) {
+    pokazKomunikat("Lista jest pusta – nie ma czego eksportować.", "info");
+    return;
+  }
+
+  try {
+    const wynik = eksportujDoJson(zgloszenia);
+    pokazKomunikat(
+      "Wyeksportowano zgłoszeń: " + wynik.ile + " do pliku " + wynik.nazwaPliku,
+      "sukces",
+    );
+  } catch (blad) {
+    pokazKomunikat("Błąd eksportu: " + blad.message, "blad");
+  }
+}
+
+window.addEventListener("DOMContentLoaded", function () {
+  zgloszenia = wczytajZgloszeniaNaStart();
+  odswiezWidok();
+  lucide.createIcons();
+
+  document
+    .getElementById("btn-nowe-zgloszenie")
+    .addEventListener("click", otworzFormularz);
+  document
+    .getElementById("btn-anuluj-formularz")
+    .addEventListener("click", zamknijFormularz);
+  document
+    .getElementById("btn-zapisz-formularz")
+    .addEventListener("click", dodajZgloszenie);
+  document
+    .getElementById("filtr-statusu")
+    .addEventListener("change", odswiezWidok);
+  document
+    .getElementById("btn-eksport-json")
+    .addEventListener("click", eksportujZgloszenia);
+
+  document
+    .getElementById("input-import-plik")
+    .addEventListener("change", function (zdarzenie) {
+      const pliki = zdarzenie.target.files;
+      if (!pliki || pliki.length === 0) {
+        return;
       }
- 
-      function zmienStatus(index, nowyStatus) {
-        zgloszenia[index].status = nowyStatus;
-        odswiezWidok();
-      }
- 
-      function usunZgloszenie(index) {
-        zgloszenia.splice(index, 1);
-        odswiezWidok();
-      }
 
-      function otworzFormularz() {
-        document.getElementById("panel-dodawania").classList.remove("hidden");
-      }
+      const wybranyPlik = pliki[0];
+      zdarzenie.target.value = "";
 
-      function zamknijFormularz() {
-        document.getElementById("panel-dodawania").classList.add("hidden");
-      }
-
-      function dodajZgloszenie() {
-        let temat = document.getElementById("input-temat").value;
-        let klient = document.getElementById("input-klient").value;
-        let status = document.getElementById("input-status").value;
-        let priorytet = document.getElementById("input-priorytet").value;
-
-        if (temat === "" || klient === "") {
-          alert("Wypełnij temat i klienta!");
-          return;
-        }
-
-        let nowe = {
-          id: "#TK-" + (1090 + zgloszenia.length + 1),
-          temat: temat,
-          klient: klient,
-          status: status,
-          priorytet: priorytet
-        };
-
-        zgloszenia.unshift(nowe);
-
-        odswiezWidok();
-
-        document.getElementById("input-temat").value = "";
-        document.getElementById("input-klient").value = "";
-        zamknijFormularz();
-      }
-
-      window.onload = function() {
-        odswiezWidok();
-        lucide.createIcons();
-      };
+      importujZ(function () {
+        return pobierzTekstZPliku(wybranyPlik);
+      }, zastapListe);
+    });
+});
