@@ -1,10 +1,10 @@
-import { DOZWOLONE_STATUSY, utworzNoweZgloszenie } from "./domain.js";
-import { pokazKomunikat } from "./messages.js";
-import { wczytajZgloszeniaNaStart, zapiszZgloszenia } from "./storage.js";
-import { czyZablokowane } from "./lock.js";
-import { wyswietlZgloszenia } from "./render.js";
-import { importujZ, pobierzTekstZPliku } from "./importer.js";
-import { eksportujDoJson } from "./exporter.js";
+import { DOZWOLONE_STATUSY, utworzNoweZgloszenie } from "./modules/domain.js";
+import { pokazKomunikat } from "./modules/messages.js";
+import { wczytajZgloszeniaNaStart, zapiszZgloszenia } from "./modules/storage.js";
+import { czyZablokowane } from "./modules/lock.js";
+import { wyswietlZgloszenia } from "./modules/render.js";
+import { importujZ, pobierzTekstZPliku } from "./modules/importer.js";
+import { eksportujDoJson } from "./modules/exporter.js";
 
 let zgloszenia = [];
 
